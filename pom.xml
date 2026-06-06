@@ -9,6 +9,7 @@
     <version>0.0.1</version>
     <name>Stellnula Java SDK</name>
     <description>Java SDK for Stellnula configuration center service.</description>
+    <url>https://github.com/stellhub/stellnula-java-sdk</url>
 
     <properties>
         <maven.compiler.release>25</maven.compiler.release>

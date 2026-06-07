@@ -1,150 +1,142 @@
-# Stellnula Java SDK
+# StellNula Java SDK
 
-Official Java SDK for [Stellnula Service](https://github.com/stellhub/stellnula-service), the Nebula configuration center server.
+`stellnula-java-sdk` 是 StellNula 配置中心的 Java 客户端 SDK，面向普通 Java 应用和后续 Spring Boot Starter，提供配置启动同步、远端配置读取、本地快照、运行态变更订阅和故障恢复能力。
 
-Stellnula 的中文名是“星云”，英文完整名是 Nebula。本仓库提供面向普通 Java 应用和未来 Spring Boot starter 的核心客户端实现。当前仓库只包含纯 Java SDK，不引入任何 Spring Boot、Spring Framework 或自动装配相关依赖。
+## 项目概述
 
-## 1. Problem analysis
+本仓库只包含纯 Java SDK，不引入 Spring Boot、Spring Framework 或自动装配依赖。SDK 负责对接 `stellnula-service` 客户端数据面和 gRPC Watch 长轮询接口，并为上层框架提供可包装的核心 API。
 
-`stellnula-service` 的客户端交互分为客户端数据面和配置管理面：
+## 当前状态
 
-- 客户端数据面路径为 `/api/v1/client/*`，用于启动 bootstrap、全量配置拉取、增量配置拉取、配置内容读取和客户端心跳。
-- 配置管理面路径为 `/api/v1/configs/{configId}`，用于配置查询、新增/更新、删除和公共配置跨环境复制发布。
-- 运行态变更通知使用 gRPC `StellnulaConfigService/Watch`。该调用是长轮询语义：客户端带本地 revision 发起请求，服务端在有新 revision 时立即返回，没有变更时阻塞到超时后返回 `NO_CHANGE`。
-- SDK 读取远端配置后必须同时更新本地内存快照和本地快照文件。本地文件只作为故障恢复来源，不作为服务端事实来源。
-- Spring Boot 接入应由后续独立 starter 完成，本仓库仅暴露可被 starter 包装的核心 API。
-- SDK 根包为 `io.github.stellnula`，按职责拆分为 `client`、`config`、`management`、`transport`、`grpc`、`store`、`telemetry`、`auth` 和 `internal` 等子包；Maven 坐标仍为 `io.github.stellhub:stellnula-java-sdk`。
+| 项目 | 说明 |
+| --- | --- |
+| 稳定性 | 开发中 |
+| 项目类型 | Java 配置中心 SDK |
+| 适用对象 | Java 应用、框架 Starter、平台组件 |
+| 核心能力 | 配置拉取、本地快照、Watch、故障恢复 |
+| 维护方 | StellHub |
 
-## 2. Design
+## 解决什么问题
 
-### 2.1 启动同步流程
+- 应用启动时强制拉取远端全量配置。
+- 将远端配置写入本地内存快照和本地文件快照。
+- 支持运行态配置变更订阅。
+- 支持基于 revision 的增量感知。
+- 为后续 Spring Boot Starter 提供核心客户端能力。
 
-```text
-1. 读取本地 snapshot 文件。
-2. 如果本地 snapshot 存在且格式有效，先填充本地内存。
-3. 调用 HTTP POST /api/v1/client/bootstrap。
-4. 使用远端 bootstrap 返回的完整配置覆盖本地内存。
-5. 使用临时文件 + 原子替换写入本地 snapshot 文件。
-6. 根据 bootstrap 返回的 gRPC 地址启动 Watch 长轮询。
+## 不解决什么问题
+
+- 不提供配置中心服务端能力。
+- 不直接提供 Spring Boot 自动装配。
+- 不实现配置管理控制台。
+- 不把本地文件作为服务端事实来源。
+
+## 核心能力
+
+| 能力 | 说明 |
+| --- | --- |
+| Bootstrap | 启动时拉取全量配置 |
+| Config Client | 读取远端配置内容 |
+| Local Snapshot | 维护本地内存和文件快照 |
+| Watch | 订阅运行态配置变更 |
+| Revision | 根据版本感知变更 |
+| Telemetry | 暴露客户端运行指标 |
+
+## 架构说明
+
+```mermaid
+flowchart LR
+    App[Java App] --> SDK[StellNula Java SDK]
+    SDK --> HTTP[HTTP Bootstrap]
+    SDK --> Watch[gRPC Watch]
+    SDK --> Memory[Local Memory Snapshot]
+    SDK --> File[Local File Snapshot]
+    HTTP --> Service[StellNula Service]
+    Watch --> Service
 ```
 
-如果远端暂时不可用，SDK 可以先暴露本地文件中的最后一次成功配置，并在后台继续重试远端同步。
+## 快速开始
 
-### 2.2 数据 CRUD 流程
-
-配置管理 API 贴合服务端当前实现：
-
-```text
-GET    /api/v1/configs/{configId}?env=&region=&zone=&cluster=
-PUT    /api/v1/configs/{configId}
-DELETE /api/v1/configs/{configId}
-POST   /api/v1/configs/{configId}/replications
+```xml
+<dependency>
+    <groupId>io.github.stellhub</groupId>
+    <artifactId>stellnula-java-sdk</artifactId>
+    <version>${stellnula.version}</version>
+</dependency>
 ```
-
-SDK 的 CRUD 方法只负责协议封装、请求体构建、响应解析和错误归一化，不在客户端侧缓存管理面查询结果。真正会更新本地内存和本地文件的是客户端数据面 bootstrap、full、delta 和 watch 结果。
-
-### 2.3 本地内存与文件模型
-
-SDK 内存中维护一份完整配置快照：
-
-```text
-revision + checksum + Map<configId, ConfigEntry>
-```
-
-本地文件默认保存到：
-
-```text
-${user.home}/.stellnula/${appId}/${env}/${cluster}/config-snapshot.json
-```
-
-文件写入规则：
-
-- 每次远端全量同步成功后写入完整 snapshot。
-- 每次 watch 增量变更成功应用后写入完整 snapshot。
-- 写文件使用同目录临时文件，再执行原子替换，避免半文件。
-- 本地 snapshot 文件带 schema 信息；加载时会校验 checksum，损坏或不匹配的文件会被隔离为 `.corrupt` 文件。
-- 如果增量应用失败、checksum 不一致或服务端返回 `CLIENT_TOO_OLD`，执行全量拉取修复。
-- HTTP bootstrap、full 和 delta 会自动处理分页，直到服务端 `hasMore=false`。
-- `deliveryMode=REFERENCE` 的大文件配置会通过 `/api/v1/client/configs/content` 补齐实际内容后再进入本地快照。
-
-### 2.4 Watch 长轮询流程
-
-```text
-1. 使用当前内存 revision 和 checksum 构造 WatchRequest。
-2. gRPC Watch 返回 CHANGED 时应用 changes。
-3. 返回 NO_CHANGE 时继续下一轮长轮询。
-4. 返回 CLIENT_TOO_OLD 或 fullSyncRequired=true 时走 HTTP full 拉取。
-5. Watch 异常时按退避策略重试，并可使用 HTTP delta/full 作为补偿路径。
-6. 更新内存和本地文件后再通知 listener。
-```
-
-SDK 会解析 HTTP 错误响应和 gRPC trailer 中的 `retryable`、`retryAfterMillis`、`retryBackoff`、`fullSyncRequired` 和 `fullSyncReason`，并据此决定退避、全量同步或重选服务端。
-
-gRPC 数据面已接入 `Watch`、`FetchFull`、`FetchDelta` 和 `ReportClientState`。HTTP full、delta 和 heartbeat 保留为 fallback 路径。
-
-### 2.5 Spring Boot 接入边界
-
-当前核心 SDK 应暴露稳定的纯 Java 类型：
-
-- `io.github.stellnula.client.StellnulaClientOptions`
-- `io.github.stellnula.client.StellnulaClient`
-- `io.github.stellnula.config.StellnulaSnapshot`
-- `io.github.stellnula.config.StellnulaConfigEntry`
-- `io.github.stellnula.config.StellnulaConfigListener`
-- `io.github.stellnula.client.StellnulaClientState`
-- `io.github.stellnula.client.StellnulaRetryBackoffHint`
-- `io.github.stellnula.auth.StellnulaTokenProvider`
-- `io.github.stellnula.transport.StellnulaServerSelector`
-- `io.github.stellnula.transport.StellnulaServerEndpoint`
-
-未来 Spring Boot starter 只需要读取 `application.yaml`，构造 `StellnulaClientOptions`，创建 `StellnulaClient`，再把配置注入 Spring Environment 或业务 Bean。本仓库不包含 starter、auto configuration、annotation 或 Spring 依赖。
-
-## 3. Implementation
-
-当前实现计划：
-
-1. 使用外部传入的 OkHttp `OkHttpClient` 封装 HTTP bootstrap、full、delta、content、heartbeat 和管理面 CRUD。
-2. 使用 Jackson 处理服务端 JSON 请求/响应，避免手写 JSON 字符串。
-3. 使用服务端 proto 契约生成 gRPC client stub，实现 `Watch` 长轮询。
-4. 使用线程安全内存快照维护完整配置，并按服务端算法校验 checksum。
-5. 使用本地 snapshot store 实现启动恢复和远端成功同步后的原子落盘。
-6. 对外提供 `start()`、`syncNow()`、`fetchFull()`、`state()`、`asMap()`、`getValue()`、`getRequiredValue()`、`snapshot()`、`upsertConfig()`、`deleteConfig()` 等核心 API。
-7. 使用 weighted rendezvous hash 从 bootstrap 返回的健康 gRPC 节点中选择 watch 目标。
-8. 额外提供治理规则和配置灰度规则管理面 API，贴合服务端 `/api/v1/governance/rules` 与 `/api/v1/configs/{configId}/gray-rules`。
-9. OpenTelemetry 指标的基础维度遵从 stellflux 资源规范，使用 `service.name`、`service.namespace`、`deployment.environment.name`、`k8s.cluster.name`、`cloud.region` 和 `cloud.availability_zone` 等 Resource Attribute，不再自定义 `stellnula.app_id`、`stellnula.env` 这类应用环境维度。
-
-## 4. Complete code
-
-构建和测试：
-
-```bash
-mvn test
-```
-
-基础使用：
 
 ```java
-import io.github.stellnula.client.StellnulaClient;
-import io.github.stellnula.client.StellnulaClientOptions;
-
-import java.net.URI;
-
-public class Demo {
-    public static void main(String[] args) throws Exception {
-        StellnulaClientOptions options = StellnulaClientOptions.builder()
-                .endpoint(URI.create("http://localhost:8080"))
-                .appId("trade.order-service")
-                .clientId("trade-order-local")
-                .env("dev")
-                .namespace("application")
-                .group("default")
-                .build();
-
-        try (StellnulaClient client = new StellnulaClient(options)) {
-            client.start();
-            String serverPort = client.getValue("server.port").orElse("8080");
-            System.out.println(serverPort);
-        }
-    }
-}
+StellnulaClient client = StellnulaClient.create(config);
+ConfigSnapshot snapshot = client.bootstrap();
 ```
+
+## 配置说明
+
+| 配置项 | 是否必填 | 说明 |
+| --- | --- | --- |
+| stellnula.endpoint | 是 | 服务端 HTTP 地址 |
+| stellnula.grpc.endpoint | 是 | Watch gRPC 地址 |
+| stellnula.app | 是 | 应用标识 |
+| stellnula.env | 是 | 环境 |
+| stellnula.snapshot.path | 否 | 本地快照文件路径 |
+
+## 本地开发
+
+```bash
+mvn clean verify
+```
+
+涉及启动同步、Watch、本地快照和故障恢复的改动必须补充测试。
+
+## 版本与升级
+
+- `MAJOR`：不兼容 API、配置模型或 Watch 协议变更。
+- `MINOR`：向后兼容的新能力。
+- `PATCH`：向后兼容的问题修复。
+
+## 可观测性
+
+| 类型 | 名称 | 说明 |
+| --- | --- | --- |
+| Metric | stellnula_client_bootstrap_total | 启动同步次数 |
+| Metric | stellnula_client_watch_total | Watch 请求次数 |
+| Metric | stellnula_client_snapshot_write_total | 快照写入次数 |
+| Log | BOOTSTRAP_FAILED | 启动同步失败 |
+| Log | WATCH_RECONNECT | Watch 重新发起 |
+
+## 故障排查
+
+### 应用启动拿不到配置
+
+1. 检查 HTTP endpoint 是否正确。
+2. 检查 app、env 和 namespace 是否匹配。
+3. 检查本地快照文件是否可读。
+4. 检查服务端是否已发布对应配置版本。
+
+## 安全说明
+
+本地快照文件需要按平台规范设置访问权限，生产环境配置不应直接提交到仓库。
+
+## 目录结构
+
+```text
+.
+├── src/            # SDK 源码
+├── docs/           # 扩展文档
+├── pom.xml         # Maven 构建文件
+└── README.md       # 项目说明
+```
+
+## 贡献规范
+
+- 公共 API 和配置模型变更必须说明兼容性影响。
+- Watch、快照和故障恢复逻辑变更必须补充测试。
+- 行为变更必须同步更新 README 或 docs。
+
+## 支持
+
+由 StellHub 维护。建议通过 GitHub Issues 记录问题、需求和设计讨论。
+
+## 许可证
+
+以仓库内 `LICENSE` 文件为准。

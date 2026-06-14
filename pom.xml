@@ -6,7 +6,7 @@
 
     <groupId>io.github.stellhub</groupId>
     <artifactId>stellnula-java-sdk</artifactId>
-    <version>0.0.1</version>
+    <version>0.0.2</version>
     <name>Stellnula Java SDK</name>
     <description>Java SDK for Stellnula configuration center service.</description>
     <url>https://github.com/stellhub/stellnula-java-sdk</url>

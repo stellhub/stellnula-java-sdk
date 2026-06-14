@@ -1,14 +1,8 @@
 package io.github.stellnula.client;
 
-import io.github.stellnula.auth.*;
-import io.github.stellnula.config.*;
-import io.github.stellnula.grpc.*;
-import io.github.stellnula.internal.*;
-import io.github.stellnula.management.*;
-import io.github.stellnula.store.*;
-import io.github.stellnula.telemetry.*;
-import io.github.stellnula.transport.*;
-import io.opentelemetry.api.GlobalOpenTelemetry;
+import io.github.stellnula.auth.StellnulaTokenProvider;
+import io.github.stellnula.config.StellnulaSubscription;
+import io.github.stellnula.transport.StellnulaServerSelector;
 import io.opentelemetry.api.OpenTelemetry;
 import java.net.URI;
 import java.nio.file.Path;
@@ -88,7 +82,7 @@ public record StellnulaClientOptions(
         tokenProvider = tokenProvider == null ? StellnulaTokenProvider.fixed(apiToken) : tokenProvider;
         serverSelector =
                 serverSelector == null ? StellnulaServerSelector.weightedRendezvous() : serverSelector;
-        openTelemetry = openTelemetry == null ? GlobalOpenTelemetry.get() : openTelemetry;
+        openTelemetry = openTelemetry == null ? OpenTelemetry.noop() : openTelemetry;
     }
 
     /** 返回实际请求分页大小。 */
@@ -327,6 +321,7 @@ public record StellnulaClientOptions(
             return this;
         }
 
+        /** 设置框架统一管理的 OpenTelemetry 实例。 */
         public Builder openTelemetry(OpenTelemetry openTelemetry) {
             this.openTelemetry = openTelemetry;
             return this;

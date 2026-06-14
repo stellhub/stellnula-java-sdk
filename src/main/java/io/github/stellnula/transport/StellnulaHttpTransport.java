@@ -3,14 +3,29 @@ package io.github.stellnula.transport;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.github.stellnula.auth.*;
-import io.github.stellnula.client.*;
-import io.github.stellnula.config.*;
-import io.github.stellnula.grpc.*;
-import io.github.stellnula.internal.*;
-import io.github.stellnula.management.*;
-import io.github.stellnula.store.*;
-import io.github.stellnula.telemetry.*;
+import io.github.stellnula.client.StellnulaClientException;
+import io.github.stellnula.client.StellnulaClientOptions;
+import io.github.stellnula.client.StellnulaRetryBackoffHint;
+import io.github.stellnula.config.StellnulaChangeType;
+import io.github.stellnula.config.StellnulaChecksum;
+import io.github.stellnula.config.StellnulaConfigChange;
+import io.github.stellnula.config.StellnulaConfigEntry;
+import io.github.stellnula.config.StellnulaConfigScope;
+import io.github.stellnula.config.StellnulaSnapshot;
+import io.github.stellnula.config.StellnulaSubscription;
+import io.github.stellnula.management.StellnulaConfigDeleteRequest;
+import io.github.stellnula.management.StellnulaConfigMutationResponse;
+import io.github.stellnula.management.StellnulaConfigRecord;
+import io.github.stellnula.management.StellnulaConfigRequest;
+import io.github.stellnula.management.StellnulaGovernanceRuleDeleteRequest;
+import io.github.stellnula.management.StellnulaGovernanceRuleRecord;
+import io.github.stellnula.management.StellnulaGovernanceRuleRequest;
+import io.github.stellnula.management.StellnulaGrayImpactResponse;
+import io.github.stellnula.management.StellnulaGrayMutationResponse;
+import io.github.stellnula.management.StellnulaGrayRuleEndRequest;
+import io.github.stellnula.management.StellnulaGrayRuleRecord;
+import io.github.stellnula.management.StellnulaGrayRuleRequest;
+import io.github.stellnula.management.StellnulaPublicConfigReplicationRequest;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.net.URI;
@@ -150,8 +165,7 @@ public final class StellnulaHttpTransport {
     }
 
     /** 上报客户端状态心跳。 */
-    public void heartbeat(StellnulaSnapshot snapshot, boolean localFileLoaded)
-            throws IOException, InterruptedException {
+    public void heartbeat(StellnulaSnapshot snapshot, boolean localFileLoaded) throws IOException {
         ClientStateRequest body =
                 new ClientStateRequest(
                         options.appId(),
@@ -187,8 +201,7 @@ public final class StellnulaHttpTransport {
 
     /** 查询管理面配置。 */
     public Optional<StellnulaConfigRecord> getConfig(
-            String configId, String env, String region, String zone, String cluster)
-            throws IOException, InterruptedException {
+            String configId, String env, String region, String zone, String cluster) throws IOException {
         try {
             return Optional.of(
                     sendGet(
@@ -205,7 +218,7 @@ public final class StellnulaHttpTransport {
 
     /** 新增或更新管理面配置。 */
     public StellnulaConfigMutationResponse upsertConfig(
-            String configId, StellnulaConfigRequest request) throws IOException, InterruptedException {
+            String configId, StellnulaConfigRequest request) throws IOException {
         return sendJson(
                 "PUT",
                 "/api/v1/configs/" + encode(configId),
@@ -215,8 +228,7 @@ public final class StellnulaHttpTransport {
 
     /** 删除管理面配置。 */
     public StellnulaConfigMutationResponse deleteConfig(
-            String configId, StellnulaConfigDeleteRequest request)
-            throws IOException, InterruptedException {
+            String configId, StellnulaConfigDeleteRequest request) throws IOException {
         return sendJson(
                 "DELETE",
                 "/api/v1/configs/" + encode(configId),
@@ -226,8 +238,7 @@ public final class StellnulaHttpTransport {
 
     /** 复制公共配置到目标环境。 */
     public StellnulaConfigMutationResponse replicatePublicConfig(
-            String configId, StellnulaPublicConfigReplicationRequest request)
-            throws IOException, InterruptedException {
+            String configId, StellnulaPublicConfigReplicationRequest request) throws IOException {
         return sendJson(
                 "POST",
                 "/api/v1/configs/" + encode(configId) + "/replications",
@@ -238,7 +249,7 @@ public final class StellnulaHttpTransport {
     /** 查询服务治理规则列表。 */
     public List<StellnulaGovernanceRuleRecord> listGovernanceRules(
             String env, String ownerId, String ruleType, String targetService, String status)
-            throws IOException, InterruptedException {
+            throws IOException {
         return sendGetList(
                 "/api/v1/governance/rules",
                 query(
@@ -258,8 +269,7 @@ public final class StellnulaHttpTransport {
 
     /** 查询服务治理规则。 */
     public Optional<StellnulaGovernanceRuleRecord> getGovernanceRule(
-            String ruleId, String env, String region, String zone, String cluster)
-            throws IOException, InterruptedException {
+            String ruleId, String env, String region, String zone, String cluster) throws IOException {
         try {
             return Optional.of(
                     sendGet(
@@ -276,8 +286,7 @@ public final class StellnulaHttpTransport {
 
     /** 新增或更新服务治理规则。 */
     public StellnulaConfigMutationResponse upsertGovernanceRule(
-            String ruleId, StellnulaGovernanceRuleRequest request)
-            throws IOException, InterruptedException {
+            String ruleId, StellnulaGovernanceRuleRequest request) throws IOException {
         return sendJson(
                 "PUT",
                 "/api/v1/governance/rules/" + encode(ruleId),
@@ -287,8 +296,7 @@ public final class StellnulaHttpTransport {
 
     /** 删除服务治理规则。 */
     public StellnulaConfigMutationResponse deleteGovernanceRule(
-            String ruleId, StellnulaGovernanceRuleDeleteRequest request)
-            throws IOException, InterruptedException {
+            String ruleId, StellnulaGovernanceRuleDeleteRequest request) throws IOException {
         return sendJson(
                 "DELETE",
                 "/api/v1/governance/rules/" + encode(ruleId),
@@ -299,7 +307,7 @@ public final class StellnulaHttpTransport {
     /** 查询配置灰度规则。 */
     public Optional<StellnulaGrayRuleRecord> getGrayRule(
             String configId, String grayName, String env, String region, String zone, String cluster)
-            throws IOException, InterruptedException {
+            throws IOException {
         try {
             return Optional.of(
                     sendGet(
@@ -323,7 +331,7 @@ public final class StellnulaHttpTransport {
             String zone,
             String cluster,
             int limit)
-            throws IOException, InterruptedException {
+            throws IOException {
         return sendGet(
                 "/api/v1/configs/" + encode(configId) + "/gray-rules/" + encode(grayName) + "/impact",
                 query(
@@ -343,8 +351,7 @@ public final class StellnulaHttpTransport {
 
     /** 创建、更新或发布配置灰度规则。 */
     public StellnulaGrayMutationResponse upsertGrayRule(
-            String configId, String grayName, StellnulaGrayRuleRequest request)
-            throws IOException, InterruptedException {
+            String configId, String grayName, StellnulaGrayRuleRequest request) throws IOException {
         return sendJson(
                 "PUT",
                 "/api/v1/configs/" + encode(configId) + "/gray-rules/" + encode(grayName),
@@ -354,8 +361,7 @@ public final class StellnulaHttpTransport {
 
     /** 结束配置灰度规则。 */
     public StellnulaGrayMutationResponse endGrayRule(
-            String configId, String grayName, StellnulaGrayRuleEndRequest request)
-            throws IOException, InterruptedException {
+            String configId, String grayName, StellnulaGrayRuleEndRequest request) throws IOException {
         return sendJson(
                 "DELETE",
                 "/api/v1/configs/" + encode(configId) + "/gray-rules/" + encode(grayName),
@@ -363,21 +369,20 @@ public final class StellnulaHttpTransport {
                 StellnulaGrayMutationResponse.class);
     }
 
-    private <T> T sendGet(String path, String query, Class<T> responseType)
-            throws IOException, InterruptedException {
+    private <T> T sendGet(String path, String query, Class<T> responseType) throws IOException {
         URI uri = resolve(path + (query.isBlank() ? "" : "?" + query));
         Request request = requestBuilder(uri).get().build();
         return execute(request, responseType);
     }
 
     private <T> List<T> sendGetList(String path, String query, Class<T[]> responseType)
-            throws IOException, InterruptedException {
+            throws IOException {
         T[] values = sendGet(path, query, responseType);
         return List.copyOf(Arrays.asList(values));
     }
 
     private <T> T sendJson(String method, String path, Object body, Class<T> responseType)
-            throws IOException, InterruptedException {
+            throws IOException {
         byte[] payload = objectMapper.writeValueAsBytes(body);
         Request request =
                 requestBuilder(resolve(path)).method(method, RequestBody.create(payload, JSON)).build();
@@ -389,7 +394,7 @@ public final class StellnulaHttpTransport {
         call.timeout().timeout(options.requestTimeout().toMillis(), TimeUnit.MILLISECONDS);
         try (Response response = call.execute()) {
             ResponseBody body = response.body();
-            String responseBody = body == null ? "" : body.string();
+            String responseBody = body.string();
             if (response.isSuccessful()) {
                 return objectMapper.readValue(responseBody, responseType);
             }
@@ -598,8 +603,7 @@ public final class StellnulaHttpTransport {
         return protocol.nextPageToken() == null ? "" : protocol.nextPageToken();
     }
 
-    private StellnulaClientException toClientException(int statusCode, String responseBody)
-            throws IOException {
+    private StellnulaClientException toClientException(int statusCode, String responseBody) {
         ErrorResponse error = null;
         try {
             if (responseBody != null && !responseBody.isBlank()) {

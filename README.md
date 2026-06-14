@@ -96,6 +96,8 @@ mvn clean verify
 
 ## 可观测性
 
+SDK 只消费 `StellnulaClientOptions.openTelemetry(OpenTelemetry)` 传入的框架级实例；默认使用 noop，不创建 `OpenTelemetrySdk`、`SdkMeterProvider` 或 exporter。Spring Boot starter 或其他框架接入层应把自身统一管理的 `OpenTelemetry` 传入 SDK，确保指标由框架统一导出。
+
 | 类型 | 名称 | 说明 |
 | --- | --- | --- |
 | Metric | stellnula_client_bootstrap_total | 启动同步次数 |

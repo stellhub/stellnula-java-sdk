@@ -1,15 +1,38 @@
 package io.github.stellnula.client;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.github.stellnula.auth.*;
-import io.github.stellnula.config.*;
-import io.github.stellnula.grpc.*;
-import io.github.stellnula.internal.*;
-import io.github.stellnula.management.*;
+import io.github.stellnula.config.StellnulaChangeType;
+import io.github.stellnula.config.StellnulaConfigCache;
+import io.github.stellnula.config.StellnulaConfigChange;
+import io.github.stellnula.config.StellnulaConfigChangeEvent;
+import io.github.stellnula.config.StellnulaConfigChangePredicate;
+import io.github.stellnula.config.StellnulaConfigChangeSource;
+import io.github.stellnula.config.StellnulaConfigConverter;
+import io.github.stellnula.config.StellnulaConfigEntry;
+import io.github.stellnula.config.StellnulaConfigEventListener;
+import io.github.stellnula.config.StellnulaConfigListener;
+import io.github.stellnula.config.StellnulaConfigPrefixes;
+import io.github.stellnula.config.StellnulaListenerRegistration;
+import io.github.stellnula.config.StellnulaSnapshot;
+import io.github.stellnula.grpc.StellnulaGrpcWatchClient;
+import io.github.stellnula.internal.StellnulaJson;
+import io.github.stellnula.management.StellnulaConfigDeleteRequest;
+import io.github.stellnula.management.StellnulaConfigMutationResponse;
+import io.github.stellnula.management.StellnulaConfigRecord;
+import io.github.stellnula.management.StellnulaConfigRequest;
+import io.github.stellnula.management.StellnulaGovernanceRuleDeleteRequest;
+import io.github.stellnula.management.StellnulaGovernanceRuleRecord;
+import io.github.stellnula.management.StellnulaGovernanceRuleRequest;
+import io.github.stellnula.management.StellnulaGrayImpactResponse;
+import io.github.stellnula.management.StellnulaGrayMutationResponse;
+import io.github.stellnula.management.StellnulaGrayRuleEndRequest;
+import io.github.stellnula.management.StellnulaGrayRuleRecord;
+import io.github.stellnula.management.StellnulaGrayRuleRequest;
+import io.github.stellnula.management.StellnulaPublicConfigReplicationRequest;
 import io.github.stellnula.protocol.grpc.v1.WatchStatus;
-import io.github.stellnula.store.*;
-import io.github.stellnula.telemetry.*;
-import io.github.stellnula.transport.*;
+import io.github.stellnula.store.StellnulaSnapshotStore;
+import io.github.stellnula.telemetry.StellnulaTelemetry;
+import io.github.stellnula.transport.StellnulaHttpTransport;
 import java.io.IOException;
 import java.net.URI;
 import java.time.Duration;
@@ -100,7 +123,7 @@ public final class StellnulaClient implements AutoCloseable {
         this.httpTransport =
                 new StellnulaHttpTransport(
                         options, Objects.requireNonNull(httpClient, "httpClient must not be null"), mapper);
-        this.telemetry = new StellnulaTelemetry(options);
+        this.telemetry = new StellnulaTelemetry(options, options.openTelemetry());
         this.snapshotStore = new StellnulaSnapshotStore(options.snapshotFile(), mapper);
         this.watchExecutor = Objects.requireNonNull(watchExecutor, "watchExecutor must not be null");
         this.listenerExecutor =

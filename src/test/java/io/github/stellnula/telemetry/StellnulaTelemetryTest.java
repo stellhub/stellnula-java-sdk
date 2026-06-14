@@ -2,8 +2,10 @@ package io.github.stellnula.telemetry;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 
 import io.github.stellnula.client.StellnulaClientOptions;
+import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.common.Attributes;
 import java.net.URI;
@@ -73,6 +75,19 @@ class StellnulaTelemetryTest {
         assertEquals("resource-service", stringAttribute(attributes, "service.name"));
         assertEquals("resource-env", stringAttribute(attributes, "deployment.environment.name"));
         assertEquals("resource-cluster", stringAttribute(attributes, "k8s.cluster.name"));
+    }
+
+    @Test
+    void keepsExternallyProvidedOpenTelemetryInstance() {
+        OpenTelemetry openTelemetry = OpenTelemetry.noop();
+
+        StellnulaClientOptions options =
+                StellnulaClientOptions.builder()
+                        .endpoint(URI.create("http://127.0.0.1:8080"))
+                        .openTelemetry(openTelemetry)
+                        .build();
+
+        assertSame(openTelemetry, options.openTelemetry());
     }
 
     private static StellnulaClientOptions options() {

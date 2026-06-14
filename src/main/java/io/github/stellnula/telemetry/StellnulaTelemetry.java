@@ -60,10 +60,6 @@ public final class StellnulaTelemetry implements AutoCloseable {
     private final AtomicLong currentRevision = new AtomicLong();
     private final AtomicLong currentEntries = new AtomicLong();
 
-    public StellnulaTelemetry(StellnulaClientOptions options) {
-        this(options, options.openTelemetry());
-    }
-
     public StellnulaTelemetry(StellnulaClientOptions options, OpenTelemetry openTelemetry) {
         this(options, openTelemetry, System.getenv());
     }

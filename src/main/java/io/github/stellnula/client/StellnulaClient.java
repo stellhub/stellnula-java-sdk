@@ -124,7 +124,7 @@ public final class StellnulaClient implements AutoCloseable {
                 new StellnulaHttpTransport(
                         options, Objects.requireNonNull(httpClient, "httpClient must not be null"), mapper);
         this.telemetry = new StellnulaTelemetry(options, options.openTelemetry());
-        this.snapshotStore = new StellnulaSnapshotStore(options.snapshotFile(), mapper);
+        this.snapshotStore = new StellnulaSnapshotStore(options.snapshotDirectory(), mapper);
         this.watchExecutor = Objects.requireNonNull(watchExecutor, "watchExecutor must not be null");
         this.listenerExecutor =
                 Objects.requireNonNull(listenerExecutor, "listenerExecutor must not be null");

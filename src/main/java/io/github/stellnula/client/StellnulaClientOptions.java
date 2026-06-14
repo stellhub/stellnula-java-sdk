@@ -30,7 +30,7 @@ public record StellnulaClientOptions(
         String hostName,
         Map<String, String> labels,
         List<StellnulaSubscription> subscriptions,
-        Path snapshotFile,
+        Path snapshotDirectory,
         Duration requestTimeout,
         Duration watchTimeout,
         Duration retryDelay,
@@ -63,7 +63,10 @@ public record StellnulaClientOptions(
         hostName = hostName == null ? "" : hostName;
         labels = labels == null ? Map.of() : Map.copyOf(labels);
         subscriptions = subscriptions == null ? List.of() : List.copyOf(subscriptions);
-        snapshotFile = snapshotFile == null ? defaultSnapshotFile(appId, env, cluster) : snapshotFile;
+        snapshotDirectory =
+                snapshotDirectory == null
+                        ? defaultSnapshotDirectory(appId, env, cluster)
+                        : snapshotDirectory;
         requestTimeout = positiveDuration(requestTimeout, Duration.ofSeconds(10), "requestTimeout");
         watchTimeout = positiveDuration(watchTimeout, Duration.ofSeconds(30), "watchTimeout");
         retryDelay = positiveDuration(retryDelay, Duration.ofSeconds(3), "retryDelay");
@@ -101,9 +104,19 @@ public record StellnulaClientOptions(
         return new Builder();
     }
 
-    private static Path defaultSnapshotFile(String appId, String env, String cluster) {
-        return Path.of(
-                System.getProperty("user.home"), ".stellnula", appId, env, cluster, "config-snapshot.json");
+    /** 返回本地快照目录。 */
+    public Path snapshotDirectory() {
+        return snapshotDirectory;
+    }
+
+    /** 返回本地快照 metadata 文件。 */
+    @Deprecated(since = "0.0.2", forRemoval = false)
+    public Path snapshotFile() {
+        return snapshotDirectory.resolve(".stellnula-snapshot.json");
+    }
+
+    private static Path defaultSnapshotDirectory(String appId, String env, String cluster) {
+        return Path.of(System.getProperty("user.home"), ".stellnula", appId, env, cluster);
     }
 
     private static Duration positiveDuration(
@@ -145,7 +158,7 @@ public record StellnulaClientOptions(
         private String hostName = "";
         private Map<String, String> labels = Map.of();
         private List<StellnulaSubscription> subscriptions = List.of();
-        private Path snapshotFile;
+        private Path snapshotDirectory;
         private Duration requestTimeout = Duration.ofSeconds(10);
         private Duration watchTimeout = Duration.ofSeconds(30);
         private Duration retryDelay = Duration.ofSeconds(3);
@@ -251,8 +264,18 @@ public record StellnulaClientOptions(
             return this;
         }
 
+        public Builder snapshotDirectory(Path snapshotDirectory) {
+            this.snapshotDirectory = snapshotDirectory;
+            return this;
+        }
+
+        /** 使用 snapshotDirectory(Path) 替代。 */
+        @Deprecated(since = "0.0.2", forRemoval = false)
         public Builder snapshotFile(Path snapshotFile) {
-            this.snapshotFile = snapshotFile;
+            this.snapshotDirectory =
+                    snapshotFile == null
+                            ? null
+                            : snapshotFile.getParent() == null ? Path.of(".") : snapshotFile.getParent();
             return this;
         }
 
@@ -347,7 +370,7 @@ public record StellnulaClientOptions(
                     hostName,
                     labels,
                     subscriptions,
-                    snapshotFile,
+                    snapshotDirectory,
                     requestTimeout,
                     watchTimeout,
                     retryDelay,

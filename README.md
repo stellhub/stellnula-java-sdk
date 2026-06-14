@@ -19,7 +19,7 @@
 ## 解决什么问题
 
 - 应用启动时强制拉取远端全量配置。
-- 将远端配置写入本地内存快照和本地文件快照。
+- 将远端配置写入本地内存快照和本地目录快照。
 - 支持运行态配置变更订阅。
 - 支持基于 revision 的增量感知。
 - 为后续 Spring Boot Starter 提供核心客户端能力。
@@ -37,7 +37,7 @@
 | --- | --- |
 | Bootstrap | 启动时拉取全量配置 |
 | Config Client | 读取远端配置内容 |
-| Local Snapshot | 维护本地内存和文件快照 |
+| Local Snapshot | 维护本地内存和目录快照 |
 | Watch | 订阅运行态配置变更 |
 | Revision | 根据版本感知变更 |
 | Telemetry | 暴露客户端运行指标 |
@@ -50,7 +50,7 @@ flowchart LR
     SDK --> HTTP[HTTP Bootstrap]
     SDK --> Watch[gRPC Watch]
     SDK --> Memory[Local Memory Snapshot]
-    SDK --> File[Local File Snapshot]
+    SDK --> File[Local Directory Snapshot]
     HTTP --> Service[StellNula Service]
     Watch --> Service
 ```
@@ -78,7 +78,24 @@ ConfigSnapshot snapshot = client.bootstrap();
 | stellnula.grpc.endpoint | 是 | Watch gRPC 地址 |
 | stellnula.app | 是 | 应用标识 |
 | stellnula.env | 是 | 环境 |
-| stellnula.snapshot.path | 否 | 本地快照文件路径 |
+| stellnula.snapshot.directory | 否 | 本地快照目录 |
+
+默认本地快照目录为：
+
+```text
+${user.home}/.stellnula/${appId}/${env}/${cluster}
+```
+
+目录内的 `configs/` 保存每个配置文件，`.stellnula-snapshot.json` 保存 revision、checksum 和配置文件索引。例如：
+
+```text
+${snapshotDirectory}/
+├── .stellnula-snapshot.json
+└── configs/
+    ├── server.port
+    └── application/
+        └── dev.yaml
+```
 
 ## 本地开发
 
@@ -112,12 +129,12 @@ SDK 只消费 `StellnulaClientOptions.openTelemetry(OpenTelemetry)` 传入的框
 
 1. 检查 HTTP endpoint 是否正确。
 2. 检查 app、env 和 namespace 是否匹配。
-3. 检查本地快照文件是否可读。
+3. 检查本地快照目录是否可读。
 4. 检查服务端是否已发布对应配置版本。
 
 ## 安全说明
 
-本地快照文件需要按平台规范设置访问权限，生产环境配置不应直接提交到仓库。
+本地快照目录需要按平台规范设置访问权限，生产环境配置不应直接提交到仓库。
 
 ## 目录结构
 

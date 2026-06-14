@@ -39,12 +39,14 @@ import io.opentelemetry.sdk.metrics.SdkMeterProvider;
 import io.opentelemetry.sdk.metrics.data.MetricData;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import java.io.IOException;
-import java.net.URI;
 import java.net.InetSocketAddress;
-import java.nio.file.Path;
+import java.net.Socket;
+import java.net.URI;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -57,6 +59,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import okhttp3.OkHttpClient;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -90,17 +93,70 @@ class StellnulaClientTest {
 
   @Test
   void persistsAndLoadsSnapshot(@TempDir Path tempDir) throws IOException {
-    Path snapshotFile = tempDir.resolve("snapshot.json");
-    StellnulaSnapshotStore store = new StellnulaSnapshotStore(snapshotFile, new ObjectMapper());
+    Path snapshotDirectory = tempDir.resolve("snapshot");
+    StellnulaSnapshotStore store = new StellnulaSnapshotStore(snapshotDirectory, new ObjectMapper());
     StellnulaConfigEntry entry = entry("server.port", "8080", 7, false);
+    StellnulaConfigEntry nested = entry("application/dev.yaml", "enabled: true", 7, false);
     StellnulaSnapshot snapshot =
-        new StellnulaSnapshot(7, StellnulaChecksum.calculate(List.of(entry)), List.of(entry));
+        new StellnulaSnapshot(7, StellnulaChecksum.calculate(List.of(entry, nested)), List.of(entry, nested));
 
     store.save(snapshot);
 
+    assertEquals("8080", Files.readString(snapshotDirectory.resolve("configs").resolve("server.port")));
+    assertEquals(
+        "enabled: true",
+        Files.readString(snapshotDirectory.resolve("configs").resolve("application").resolve("dev.yaml")));
     StellnulaSnapshot loaded = store.load().orElseThrow();
     assertEquals(7, loaded.revision());
     assertEquals("8080", loaded.findValue("server.port").orElseThrow());
+    assertEquals("enabled: true", loaded.findValue("application/dev.yaml").orElseThrow());
+  }
+
+  @Test
+  @Disabled
+  void connectsLocalStellnulaServiceAndPrintsKeyValues(@TempDir Path tempDir) throws Exception {
+    URI endpoint = URI.create("http://localhost:8060");
+    org.junit.jupiter.api.Assumptions.assumeTrue(
+        localServiceAvailable(endpoint),
+        "local stellnula-service is not listening on http://localhost:8060");
+
+    StellnulaClientOptions options =
+        StellnulaClientOptions.builder()
+            .endpoint(endpoint)
+            .apiToken(System.getProperty("stellnula.local.token", ""))
+            .appId("stellhub.core.middleware.stellcloud.admin")
+            .clientId("stellnula-java-sdk-local-test")
+            .env(System.getProperty("stellnula.local.env", "dev"))
+            .namespace(System.getProperty("stellnula.local.namespace", "default"))
+            .cluster(System.getProperty("stellnula.local.cluster", "default"))
+            .group(System.getProperty("stellnula.local.group", "default"))
+            .requestTimeout(Duration.ofSeconds(5))
+            .watchEnabled(false)
+            .snapshotDirectory(tempDir.resolve("stellnula-local-snapshot"))
+            .build();
+
+    try (StellnulaClient client = new StellnulaClient(options, new OkHttpClient())) {
+      StellnulaSnapshot snapshot = client.syncNow();
+
+      assertTrue(snapshot.checksumMatches());
+      System.out.printf(
+          "Stellnula local snapshot revision=%d checksum=%s entries=%d%n",
+          snapshot.revision(), snapshot.checksum(), snapshot.entries().size());
+      if (snapshot.entries().isEmpty()) {
+        System.out.println("Stellnula local config: no key-value entries returned");
+      }
+      snapshot.entries().stream()
+          .sorted(Comparator.comparing(StellnulaConfigEntry::configKey))
+          .forEach(
+              entry ->
+                  System.out.printf(
+                      "Stellnula local config: key=%s, value=%s, configId=%s, contentType=%s, revision=%d%n",
+                      entry.configKey(),
+                      entry.configValue(),
+                      entry.configId(),
+                      entry.contentType(),
+                      entry.revision()));
+    }
   }
 
   @Test
@@ -960,7 +1016,7 @@ class StellnulaClientTest {
         new StellnulaClient(
             StellnulaClientOptions.builder()
                 .endpoint(URI.create("http://127.0.0.1:" + httpServer.getAddress().getPort()))
-                .snapshotFile(tempDir.resolve("snapshot.json"))
+                .snapshotDirectory(tempDir.resolve("snapshot"))
                 .requestTimeout(Duration.ofSeconds(2))
                 .watchTimeout(Duration.ofMillis(100))
                 .retryDelay(Duration.ofMillis(10))
@@ -1030,13 +1086,16 @@ class StellnulaClientTest {
 
   @Test
   void quarantinesInvalidSnapshotFile(@TempDir Path tempDir) throws IOException {
-    Path snapshotFile = tempDir.resolve("snapshot.json");
-    Files.writeString(snapshotFile, "{not-json");
-    StellnulaSnapshotStore store = new StellnulaSnapshotStore(snapshotFile, new ObjectMapper());
+    Path snapshotDirectory = tempDir.resolve("snapshot");
+    Files.createDirectories(snapshotDirectory);
+    Path metadataFile = snapshotDirectory.resolve(".stellnula-snapshot.json");
+    Files.writeString(metadataFile, "{not-json");
+    StellnulaSnapshotStore store = new StellnulaSnapshotStore(snapshotDirectory, new ObjectMapper());
 
     assertTrue(store.load().isEmpty());
-    assertFalse(Files.exists(snapshotFile));
-    assertTrue(Files.list(tempDir).anyMatch(path -> path.getFileName().toString().endsWith(".corrupt")));
+    assertFalse(Files.exists(metadataFile));
+    assertTrue(
+        Files.list(snapshotDirectory).anyMatch(path -> path.getFileName().toString().endsWith(".corrupt")));
   }
 
   @Test
@@ -1195,6 +1254,15 @@ class StellnulaClientTest {
         .group("default")
         .watchEnabled(false)
         .build();
+  }
+
+  private static boolean localServiceAvailable(URI endpoint) {
+    try (Socket socket = new Socket()) {
+      socket.connect(new InetSocketAddress(endpoint.getHost(), endpoint.getPort()), 500);
+      return true;
+    } catch (IOException ex) {
+      return false;
+    }
   }
 
   private static HttpServer httpServer(ExchangeHandler handler) throws IOException {

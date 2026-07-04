@@ -1,78 +1,78 @@
 # StellNula Java SDK
 
-[English](README_EN.md)
+[中文](README_CN.md)
 
-`stellnula-java-sdk` 是 StellNula 配置中心的纯 Java 客户端 SDK。它面向普通 Java 应用、平台组件以及后续 Spring Boot Starter，提供启动同步、配置读取、本地内存快照、本地目录快照、gRPC Watch、故障恢复、类型转换、前缀绑定、细粒度监听和 OpenTelemetry 指标采集能力。
+`stellnula-java-sdk` is the pure Java client SDK for the StellNula configuration center. It is designed for plain Java applications, platform components, and a future Spring Boot Starter. The SDK provides startup synchronization, remote configuration reads, local in-memory snapshots, local directory snapshots, gRPC Watch, failure recovery, type conversion, prefix binding, fine-grained listeners, and OpenTelemetry metrics.
 
-本仓库只包含 SDK 核心能力，不引入 Spring Boot、Spring Framework 或任何自动装配依赖。Spring Boot Starter、运行时框架集成和配置装配逻辑应在独立模块中完成，并通过本 SDK 暴露的稳定 API 进行接入。
+This repository contains only the core SDK. It does not depend on Spring Boot, Spring Framework, or any auto-configuration mechanism. Spring Boot integration, runtime framework wiring, and property-source adaptation should live in a separate starter module built on top of this SDK.
 
-## 当前状态
+## Status
 
-| 项目 | 说明 |
+| Item | Description |
 | --- | --- |
-| 稳定性 | 开发中 |
-| Java 版本 | JDK 25 |
-| 项目类型 | 配置中心 Java SDK |
-| Maven 坐标 | `io.github.stellhub:stellnula-java-sdk` |
-| 核心传输 | HTTP 数据面、gRPC Watch |
-| 适用场景 | Java 应用、框架 Starter、平台中间件 |
-| 维护方 | StellHub |
+| Stability | In development |
+| Java version | JDK 25 |
+| Project type | Configuration center Java SDK |
+| Maven coordinates | `io.github.stellhub:stellnula-java-sdk` |
+| Core transports | HTTP data plane, gRPC Watch |
+| Target users | Java applications, framework starters, platform middleware |
+| Maintainer | StellHub |
 
-## 解决什么问题
+## What This SDK Solves
 
-- 应用启动时从 `stellnula-service` 拉取远端全量配置。
-- 将配置写入本地内存快照，并按配置文件粒度落盘到本地快照目录。
-- 通过 revision 和 checksum 感知配置版本，避免重复加载和脏数据。
-- 使用 gRPC Watch 监听运行态变更，并在异常时回退到 HTTP 补偿同步。
-- 对外提供 key 查询、类型转换、前缀绑定、变更监听和管理面 API。
-- 接收外部传入的 OkHttpClient、ExecutorService 和 OpenTelemetry，方便框架统一治理连接池、线程池和可观测数据。
+- Fetches a full remote configuration snapshot from `stellnula-service` during application startup.
+- Stores configuration in an in-memory snapshot and persists each config item into a local snapshot directory.
+- Uses revision and checksum to detect stale or inconsistent data.
+- Watches runtime changes through gRPC Watch and falls back to HTTP recovery when needed.
+- Exposes key reads, type conversion, prefix binding, change listeners, and management APIs.
+- Accepts externally managed OkHttpClient, ExecutorService, and OpenTelemetry instances so frameworks can manage connection pools, thread pools, and telemetry export consistently.
 
-## 不解决什么问题
+## What This SDK Does Not Solve
 
-- 不提供 `stellnula-service` 服务端实现。
-- 不直接提供 Spring Boot 自动装配、`EnvironmentPostProcessor` 或配置属性注入。
-- 不实现配置管理控制台。
-- 不把本地快照作为配置中心事实来源。本地快照只用于启动兜底和诊断。
-- 不在 SDK 内部创建 OpenTelemetry SDK、MeterProvider 或 exporter。
+- It does not implement `stellnula-service`.
+- It does not provide Spring Boot auto-configuration, `EnvironmentPostProcessor`, or property injection.
+- It does not implement a configuration management console.
+- It does not treat local snapshots as the source of truth. Local snapshots are a startup fallback and diagnostic artifact.
+- It does not create OpenTelemetry SDKs, MeterProviders, or exporters internally.
 
-## 核心能力
+## Features
 
-| 能力 | 说明 |
+| Feature | Description |
 | --- | --- |
-| Bootstrap | 启动时执行远端全量同步 |
-| Config Read | 按 `configKey` 或 `configId` 读取配置 |
-| Local Memory Snapshot | 使用不可变快照承载当前配置视图 |
-| Local Directory Snapshot | 将每个配置内容写入本地 `configs/` 目录 |
-| Revision and Checksum | 使用服务端 revision 与 checksum 校验一致性 |
-| gRPC Watch | 长轮询监听配置变更 |
-| Recovery | Watch 失败后执行 HTTP delta/full sync 补偿 |
-| Listener | 支持全量、指定 key、指定 prefix 的变更监听 |
-| Type Conversion | 支持 String、数字、Boolean、Duration 等常用类型转换 |
-| Prefix Binding | 将前缀下的配置绑定成目标 Java 类型 |
-| Telemetry | 接入外部 OpenTelemetry 并记录关键指标 |
-| Management API | 提供配置、治理规则、灰度规则的基础管理接口 |
+| Bootstrap | Fetches a full snapshot during startup |
+| Config Read | Reads config values by `configKey` or `configId` |
+| Local Memory Snapshot | Keeps the current configuration view as an immutable snapshot |
+| Local Directory Snapshot | Persists each config item under a local `configs/` directory |
+| Revision and Checksum | Validates consistency with server revision and checksum |
+| gRPC Watch | Long-polls runtime configuration changes |
+| Recovery | Falls back to HTTP delta/full sync when Watch fails |
+| Listener | Supports all-change, key-based, and prefix-based listeners |
+| Type Conversion | Converts values to String, numbers, Boolean, Duration, and more |
+| Prefix Binding | Binds config values under a prefix to a Java type |
+| Telemetry | Records metrics through an externally provided OpenTelemetry instance |
+| Management API | Provides basic config, governance-rule, and gray-rule management calls |
 
-## 基本原理
+## Core Principles
 
-StellNula SDK 的运行模型可以分为四层：
+The SDK runtime model has four layers:
 
-1. **客户端上下文**
+1. **Client context**
 
-   `StellnulaClientOptions` 描述当前客户端实例的身份和运行范围，包括 `appId`、`clientId`、`env`、`region`、`zone`、`cluster`、`namespace`、`group`、订阅列表、快照目录、超时、重试、线程池和可观测实例。
+   `StellnulaClientOptions` describes the identity and runtime scope of a client instance, including `appId`, `clientId`, `env`, `region`, `zone`, `cluster`, `namespace`, `group`, subscriptions, snapshot directory, timeouts, retry settings, executors, and telemetry.
 
-2. **远端同步**
+2. **Remote synchronization**
 
-   SDK 启动时先读取本地快照，再通过 HTTP bootstrap 拉取服务端全量配置。服务端返回配置集合、revision、checksum 和可选 gRPC 节点信息。SDK 会校验快照一致性，并把最新配置写入内存和本地目录。
+   On startup, the SDK loads the local snapshot first, then performs an HTTP bootstrap against the server. The server returns config entries, revision, checksum, and optional gRPC endpoints. The SDK verifies consistency and writes the latest state to memory and disk.
 
-3. **本地快照**
+3. **Local snapshot**
 
-   内存中使用 `StellnulaSnapshot` 表示当前配置视图。每个配置项是一个 `StellnulaConfigEntry`，包含 `configId`、`configKey`、`contentType`、`configValue`、版本、灰度匹配信息、传输模式和作用域。对外读取时通常是 `configKey -> configValue`，内部增量合并使用更稳定的 `configId`。
+   The current configuration view is represented by `StellnulaSnapshot`. Each config item is a `StellnulaConfigEntry` containing `configId`, `configKey`, `contentType`, `configValue`, version, gray-match metadata, delivery mode, and scope. Public reads are usually `configKey -> configValue`, while internal delta merging uses the more stable `configId`.
 
-4. **运行态变更**
+4. **Runtime changes**
 
-   SDK 使用 gRPC Watch 监听服务端 revision 变化。收到变更后会应用增量、更新本地快照、通知 listener，并记录指标。如果 gRPC 节点不可用，SDK 会隔离失败节点并通过 HTTP delta/full sync 恢复。
+   The SDK uses gRPC Watch to observe server-side revision changes. When changes arrive, it applies the delta, updates local snapshots, notifies listeners, and records metrics. If a gRPC node fails, the SDK isolates the failed node and recovers through HTTP delta/full sync.
 
-## 架构
+## Architecture
 
 ```mermaid
 flowchart LR
@@ -87,7 +87,7 @@ flowchart LR
     Grpc --> Service
 ```
 
-### 启动流程
+### Startup Flow
 
 ```mermaid
 sequenceDiagram
@@ -107,7 +107,7 @@ sequenceDiagram
     SDK->>Service: start gRPC watch loop
 ```
 
-### 运行态变更流程
+### Runtime Change Flow
 
 ```mermaid
 sequenceDiagram
@@ -125,23 +125,23 @@ sequenceDiagram
     SDK-->>Listener: filtered change event
 ```
 
-## 核心概念
+## Concepts
 
-| 概念 | 说明 |
+| Concept | Description |
 | --- | --- |
-| `appId` | 应用标识，用于定位应用配置集合 |
-| `clientId` | 客户端实例标识，建议每个进程唯一 |
-| `env` | 环境，例如 `dev`、`uat`、`pre`、`prod` |
-| `namespace` | 配置隔离空间，通常对应租户、业务域或环境隔离 |
-| `group` | 配置分组。当前作为客户端默认 group，subscription 可指定 group |
-| `configId` | 服务端配置唯一标识，内部增量合并优先使用 |
-| `configKey` | 业务读取 key，也可表示文件路径，例如 `application/dev.yaml` |
-| `configValue` | 解码后的配置内容。文件配置时可理解为文件内容 |
-| `revision` | 服务端配置版本，用于判断是否需要同步 |
-| `checksum` | 配置集合校验值，用于检测本地快照是否与服务端一致 |
-| `subscription` | 客户端订阅过滤条件，支持全部配置或指定配置 |
+| `appId` | Application identifier used to locate the application's config set |
+| `clientId` | Client instance identifier, preferably unique per process |
+| `env` | Environment such as `dev`, `uat`, `pre`, or `prod` |
+| `namespace` | Configuration isolation scope, often used for tenant, domain, or environment isolation |
+| `group` | Configuration group. Currently used as the default client group; subscriptions can specify their own group |
+| `configId` | Server-side unique config identifier, preferred for internal delta merging |
+| `configKey` | Business-facing read key; it can also represent a file path such as `application/dev.yaml` |
+| `configValue` | Decoded configuration content. For file configs, this is the file content |
+| `revision` | Server-side configuration version used to decide whether synchronization is needed |
+| `checksum` | Config-set checksum used to detect local/server inconsistency |
+| `subscription` | Client-side subscription filter for all configs or selected configs |
 
-## 快速开始
+## Quick Start
 
 ### Maven
 
@@ -153,7 +153,7 @@ sequenceDiagram
 </dependency>
 ```
 
-### 创建客户端并同步配置
+### Create a Client and Sync Configs
 
 ```java
 import io.github.stellnula.client.StellnulaClient;
@@ -188,7 +188,7 @@ public final class StellnulaExample {
 }
 ```
 
-### 启动 Watch
+### Start Watch
 
 ```java
 try (StellnulaClient client = new StellnulaClient(options, httpClient)) {
@@ -198,9 +198,9 @@ try (StellnulaClient client = new StellnulaClient(options, httpClient)) {
 }
 ```
 
-`start()` 会先加载本地快照，再执行远端同步，并在 `watchEnabled=true` 时启动 gRPC Watch 循环。
+`start()` loads the local snapshot first, synchronizes with the remote server, and starts the gRPC Watch loop when `watchEnabled=true`.
 
-## 读取配置
+## Reading Values
 
 ```java
 String required = client.getRequiredValue("server.port");
@@ -211,7 +211,7 @@ Duration timeout = client.getDuration("http.timeout").orElse(Duration.ofSeconds(
 
 ## Prefix Binding
 
-当远端配置类似如下：
+Given remote configuration like:
 
 ```properties
 server.port=8080
@@ -219,7 +219,7 @@ server.host=127.0.0.1
 server.shutdown-timeout=5s
 ```
 
-可以按前缀绑定：
+You can bind values under a prefix:
 
 ```java
 public record ServerProperties(int port, String host, Duration shutdownTimeout) {}
@@ -227,7 +227,7 @@ public record ServerProperties(int port, String host, Duration shutdownTimeout) 
 ServerProperties properties = client.bindPrefix("server", ServerProperties.class);
 ```
 
-## 监听配置变更
+## Listening for Changes
 
 ```java
 client.listenPrefix("server", event -> {
@@ -238,22 +238,22 @@ client.listenPrefix("server", event -> {
 });
 ```
 
-SDK 支持：
+Supported listener modes:
 
-- `listen(listener)`：监听全部变更。
-- `listenKey(key, listener)`：监听指定 `configKey` 或 `configId`。
-- `listenPrefix(prefix, listener)`：监听指定前缀。
-- `listen(predicate, listener, notifyCurrent)`：自定义过滤条件，并可选择是否立即通知当前快照。
+- `listen(listener)`: listens for all changes.
+- `listenKey(key, listener)`: listens for a single `configKey` or `configId`.
+- `listenPrefix(prefix, listener)`: listens for a prefix.
+- `listen(predicate, listener, notifyCurrent)`: uses a custom predicate and optionally emits the current snapshot immediately.
 
-## 本地快照
+## Local Snapshot
 
-默认快照目录：
+Default snapshot directory:
 
 ```text
 ${user.home}/.stellnula/${appId}/${env}/${cluster}
 ```
 
-目录结构：
+Directory layout:
 
 ```text
 ${snapshotDirectory}/
@@ -264,48 +264,48 @@ ${snapshotDirectory}/
         └── dev.yaml
 ```
 
-其中：
+Details:
 
-- `.stellnula-snapshot.json` 保存 revision、checksum 和配置索引。
-- `configs/` 保存每个配置项的真实内容。
-- 文件路径优先来自 `configKey`，不安全路径会被清理或回退到 `by-id/`。
-- 旧版 `config-snapshot.json` 仍可读取，下一次保存会迁移为目录快照。
+- `.stellnula-snapshot.json` stores revision, checksum, and config indexes.
+- `configs/` stores the actual content of each config item.
+- File paths prefer `configKey`; unsafe paths are sanitized or moved under `by-id/`.
+- Legacy `config-snapshot.json` can still be read and will naturally migrate to the directory format on the next save.
 
-## 配置项
+## Options
 
-| 配置项 | 默认值 | 说明 |
+| Option | Default | Description |
 | --- | --- | --- |
-| `endpoint` | 无 | `stellnula-service` HTTP 地址，必填 |
-| `grpcEndpoint` | 服务端返回或空 | 指定 gRPC Watch 地址 |
-| `grpcPlaintext` | `true` | gRPC 是否使用明文连接 |
-| `apiToken` | 空 | 固定访问令牌 |
-| `tokenProvider` | fixed token | 动态令牌提供器 |
-| `appId` | `default-app` | 应用标识 |
-| `clientId` | `default-client` | 客户端实例标识 |
-| `env` | `dev` | 环境 |
-| `region` | `default` | 区域 |
-| `zone` | `default` | 可用区 |
-| `cluster` | `default` | 集群 |
-| `namespace` | `default` | 配置命名空间 |
-| `group` | `default` | 默认配置分组 |
-| `subscriptions` | 空列表 | 订阅过滤条件 |
-| `snapshotDirectory` | `${user.home}/.stellnula/${appId}/${env}/${cluster}` | 本地快照目录 |
-| `requestTimeout` | 10s | HTTP 请求超时 |
-| `watchTimeout` | 30s | Watch 等待超时 |
-| `retryDelay` | 3s | 默认重试间隔 |
-| `serverRefreshInterval` | 1m | 服务端节点刷新间隔 |
-| `serverFailureCooldown` | 30s | 失败节点隔离时间 |
-| `grpcShutdownTimeout` | 3s | gRPC channel 关闭等待时间 |
-| `watchEnabled` | `true` | 是否启动 Watch |
-| `failFastOnBootstrap` | `false` | 启动同步失败时是否直接抛出 |
-| `pageSize` | 500 | 服务端分页大小 |
-| `maxPayloadBytes` | 0 | 最大载荷限制，0 表示不限制 |
-| `acceptLargeFileReference` | `false` | 是否接受大文件引用模式 |
-| `openTelemetry` | noop | 外部传入的 OpenTelemetry 实例 |
+| `endpoint` | none | HTTP endpoint of `stellnula-service`, required |
+| `grpcEndpoint` | server-provided or empty | Explicit gRPC Watch endpoint |
+| `grpcPlaintext` | `true` | Whether to use plaintext gRPC |
+| `apiToken` | empty | Fixed access token |
+| `tokenProvider` | fixed token | Dynamic token provider |
+| `appId` | `default-app` | Application identifier |
+| `clientId` | `default-client` | Client instance identifier |
+| `env` | `dev` | Environment |
+| `region` | `default` | Region |
+| `zone` | `default` | Zone |
+| `cluster` | `default` | Cluster |
+| `namespace` | `default` | Configuration namespace |
+| `group` | `default` | Default configuration group |
+| `subscriptions` | empty list | Subscription filters |
+| `snapshotDirectory` | `${user.home}/.stellnula/${appId}/${env}/${cluster}` | Local snapshot directory |
+| `requestTimeout` | 10s | HTTP request timeout |
+| `watchTimeout` | 30s | Watch wait timeout |
+| `retryDelay` | 3s | Default retry delay |
+| `serverRefreshInterval` | 1m | Server endpoint refresh interval |
+| `serverFailureCooldown` | 30s | Failed endpoint isolation duration |
+| `grpcShutdownTimeout` | 3s | gRPC channel shutdown timeout |
+| `watchEnabled` | `true` | Whether Watch is enabled |
+| `failFastOnBootstrap` | `false` | Whether startup should fail immediately when bootstrap fails |
+| `pageSize` | 500 | Server-side page size |
+| `maxPayloadBytes` | 0 | Max payload size; 0 means unlimited |
+| `acceptLargeFileReference` | `false` | Whether to accept large-file reference delivery |
+| `openTelemetry` | noop | Externally provided OpenTelemetry instance |
 
-## 线程池与连接池
+## Thread Pools and Connection Pools
 
-SDK 推荐由框架或应用传入统一管理的资源：
+The SDK works best when frameworks or applications provide centrally managed resources:
 
 ```java
 import io.github.stellnula.client.StellnulaClient;
@@ -325,47 +325,47 @@ StellnulaClient client = new StellnulaClient(
         listenerExecutor);
 ```
 
-当外部传入线程池时，SDK 不会在 `close()` 时关闭这些线程池，调用方需要自行管理生命周期。
+When executors are provided externally, the SDK will not shut them down in `close()`. The caller owns their lifecycle.
 
-## 可观测性
+## Observability
 
-SDK 只消费 `StellnulaClientOptions.openTelemetry(OpenTelemetry)` 传入的框架级实例，默认使用 noop。这样可以让指标由应用或框架统一导出到 Prometheus、OTLP Collector 或其他后端。
+The SDK only consumes the `OpenTelemetry` instance passed through `StellnulaClientOptions.openTelemetry(OpenTelemetry)`. By default it uses noop. This allows applications and frameworks to export metrics consistently to Prometheus, OTLP Collector, or other backends.
 
-当前记录的核心指标包括：
+Core metrics:
 
-| 指标 | 类型 | 说明 |
+| Metric | Type | Description |
 | --- | --- | --- |
-| `stellnula.client.operations` | Counter | 客户端操作次数 |
-| `stellnula.client.operation.duration` | Histogram | 客户端操作耗时 |
-| `stellnula.client.errors` | Counter | 客户端错误次数 |
-| `stellnula.client.config.changes` | Counter | 配置变更数量 |
-| `stellnula.client.snapshot.operations` | Counter | 本地快照操作次数 |
-| `stellnula.client.snapshot.operation.duration` | Histogram | 本地快照操作耗时 |
-| `stellnula.client.listener.notifications` | Counter | listener 通知次数 |
-| `stellnula.client.revision` | Gauge | 当前配置 revision |
-| `stellnula.client.config.entries` | Gauge | 当前配置项数量 |
+| `stellnula.client.operations` | Counter | Number of client operations |
+| `stellnula.client.operation.duration` | Histogram | Client operation duration |
+| `stellnula.client.errors` | Counter | Number of client errors |
+| `stellnula.client.config.changes` | Counter | Number of config changes |
+| `stellnula.client.snapshot.operations` | Counter | Number of local snapshot operations |
+| `stellnula.client.snapshot.operation.duration` | Histogram | Local snapshot operation duration |
+| `stellnula.client.listener.notifications` | Counter | Number of listener notifications |
+| `stellnula.client.revision` | Gauge | Current config revision |
+| `stellnula.client.config.entries` | Gauge | Number of config entries in memory |
 
-## 管理面 API
+## Management APIs
 
-SDK 还提供基础管理接口，便于平台工具或测试代码操作配置：
+The SDK also exposes basic management APIs for platform tooling and tests:
 
-- 查询、创建、更新、删除配置。
-- 复制公共配置。
-- 查询和维护治理规则。
-- 查询、创建、结束灰度规则。
-- 查询灰度影响范围。
+- Get, create, update, and delete configs.
+- Replicate public configs.
+- Get and maintain governance rules.
+- Get, create, and end gray rules.
+- Query gray-rule impact.
 
-管理面 API 与运行态客户端能力共享同一个 `StellnulaClient`，但生产应用通常只需要读取与 Watch 能力。
+Management APIs share the same `StellnulaClient`, but production applications usually only need config read and Watch capabilities.
 
-## 本地真实服务测试
+## Local Service Test
 
-仓库包含一个连接本地 `stellnula-service` 的测试：
+The repository includes a test that connects to a local `stellnula-service`:
 
 ```bash
 mvn -q -Dtest=StellnulaClientTest#connectsLocalStellnulaServiceAndPrintsKeyValues test
 ```
 
-默认连接：
+Default target:
 
 ```text
 http://localhost:8060
@@ -375,7 +375,7 @@ namespace=default
 group=default
 ```
 
-如需覆盖本地参数：
+Override local parameters:
 
 ```bash
 mvn -q -Dtest=StellnulaClientTest#connectsLocalStellnulaServiceAndPrintsKeyValues test \
@@ -386,37 +386,37 @@ mvn -q -Dtest=StellnulaClientTest#connectsLocalStellnulaServiceAndPrintsKeyValue
   -Dstellnula.local.token=your-token
 ```
 
-如果 `localhost:8060` 未启动，测试会自动跳过。
+If `localhost:8060` is not running, the test is skipped.
 
-## 故障排查
+## Troubleshooting
 
-### 启动拿不到配置
+### No Configs During Startup
 
-1. 检查 `endpoint` 是否指向正确的 `stellnula-service`。
-2. 检查 `appId`、`env`、`namespace`、`group` 是否与服务端发布记录一致。
-3. 检查服务端是否已发布目标 revision。
-4. 检查本地快照目录是否可读写。
-5. 检查访问令牌是否过期，或 `tokenProvider` 是否能返回新 token。
+1. Verify that `endpoint` points to the correct `stellnula-service`.
+2. Verify that `appId`, `env`, `namespace`, and `group` match the server-side release.
+3. Verify that the server has published the target revision.
+4. Verify that the local snapshot directory is readable and writable.
+5. Verify that the access token is valid or that `tokenProvider` can refresh it.
 
-### Watch 不触发
+### Watch Does Not Trigger
 
-1. 检查服务端返回或手动配置的 `grpcEndpoint`。
-2. 检查网络、防火墙和 gRPC 明文/TLS 设置。
-3. 检查服务端 revision 是否真实变化。
-4. 检查 listener 是否被 key 或 prefix 过滤掉。
+1. Verify the server-provided or manually configured `grpcEndpoint`.
+2. Check network, firewall, and gRPC plaintext/TLS settings.
+3. Verify that the server revision actually changed.
+4. Verify that the listener is not filtered out by key or prefix.
 
-### 本地快照被隔离为 `.corrupt`
+### Local Snapshot Is Quarantined as `.corrupt`
 
-SDK 在发现本地 metadata 无法解析或 checksum 不匹配时，会将文件移动为 `.corrupt`，然后回退到远端同步。可以检查 `.corrupt` 文件判断是否存在磁盘损坏、手工编辑或跨版本格式不兼容。
+When local metadata cannot be parsed or checksum verification fails, the SDK moves the file to `.corrupt` and falls back to remote synchronization. Inspect the `.corrupt` file to determine whether the root cause is disk corruption, manual edits, or incompatible snapshot formats.
 
-## 安全建议
+## Security Notes
 
-- 生产环境不要将本地快照目录提交到仓库。
-- 本地快照可能包含敏感配置，应按操作系统规范设置文件权限。
-- 建议通过 `StellnulaTokenProvider` 接入框架级 token 刷新逻辑。
-- 不建议在业务日志中直接打印完整配置值，尤其是密钥、连接串和证书。
+- Do not commit local snapshot directories to source control.
+- Local snapshots may contain sensitive values. Use proper operating-system file permissions.
+- Prefer `StellnulaTokenProvider` for framework-managed token refresh.
+- Avoid logging full config values in production, especially secrets, connection strings, and certificates.
 
-## 本地开发
+## Local Development
 
 ```bash
 mvn clean verify
@@ -424,15 +424,15 @@ mvn -q test
 mvn -q spotless:check
 ```
 
-涉及以下能力的改动应补充测试：
+Changes in the following areas should include tests:
 
-- 启动同步和 HTTP 协议解析。
-- gRPC Watch、节点刷新和故障隔离。
-- 本地快照读写、checksum 校验和兼容迁移。
-- 类型转换、prefix binding 和 listener。
-- OpenTelemetry 指标。
+- Startup synchronization and HTTP protocol parsing.
+- gRPC Watch, endpoint refresh, and failure isolation.
+- Local snapshot read/write, checksum validation, and compatibility migration.
+- Type conversion, prefix binding, and listeners.
+- OpenTelemetry metrics.
 
-## 项目结构
+## Project Structure
 
 ```text
 .
@@ -453,20 +453,20 @@ mvn -q spotless:check
     └── test/
 ```
 
-## 兼容性说明
+## Compatibility Notes
 
-- `snapshotDirectory(Path)` 是推荐的本地快照配置方式。
-- `snapshotFile(Path)` 已保留为 deprecated 兼容入口，会映射到父目录。
-- SDK 当前不引入 Spring 相关依赖，后续 Spring Boot Starter 应作为独立模块接入。
-- `ObjectMapper` 使用 SDK 内部共享实例，不建议调用方依赖内部 JSON 实现细节。
+- `snapshotDirectory(Path)` is the recommended local snapshot option.
+- `snapshotFile(Path)` is kept as a deprecated compatibility entry and maps to its parent directory.
+- The SDK core module does not depend on Spring. A future Spring Boot Starter should be implemented as a separate module.
+- The SDK uses an internal shared `ObjectMapper`; callers should not depend on internal JSON implementation details.
 
-## 贡献规范
+## Contributing
 
-- 公共 API、配置模型或协议语义变更必须说明兼容性影响。
-- Watch、快照和故障恢复逻辑变更必须补充测试。
-- 行为变更必须同步更新 README 或扩展文档。
-- 不要在 SDK 核心模块中引入 Spring Boot 相关依赖。
+- Public API, configuration-model, or protocol-semantic changes must document compatibility impact.
+- Watch, snapshot, and recovery changes must include tests.
+- Behavior changes must update README or extended documentation.
+- Do not introduce Spring Boot dependencies into the SDK core module.
 
-## 许可证
+## License
 
-本项目在 `pom.xml` 中声明 Apache License 2.0。
+This project declares Apache License 2.0 in `pom.xml`.

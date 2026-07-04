@@ -16,6 +16,7 @@
         <maven.compiler.source>25</maven.compiler.source>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <protobuf.version>3.25.5</protobuf.version>
+        <grpc.protoc.version>1.80.0</grpc.protoc.version>
     </properties>
 
     <licenses>
@@ -108,13 +109,6 @@
     </dependencies>
 
     <build>
-        <extensions>
-            <extension>
-                <groupId>kr.motd.maven</groupId>
-                <artifactId>os-maven-plugin</artifactId>
-                <version>1.7.1</version>
-            </extension>
-        </extensions>
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -131,10 +125,10 @@
                 <artifactId>protobuf-maven-plugin</artifactId>
                 <version>0.6.1</version>
                 <configuration>
-                    <protocArtifact>com.google.protobuf:protoc:${protobuf.version}:exe:${os.detected.classifier}
+                    <protocArtifact>com.google.protobuf:protoc:${protobuf.version}:exe:${protobuf.os.classifier}
                     </protocArtifact>
                     <pluginId>grpc-java</pluginId>
-                    <pluginArtifact>io.grpc:protoc-gen-grpc-java:1.80.0:exe:${os.detected.classifier}
+                    <pluginArtifact>io.grpc:protoc-gen-grpc-java:${grpc.protoc.version}:exe:${protobuf.os.classifier}
                     </pluginArtifact>
                 </configuration>
                 <executions>
@@ -190,6 +184,114 @@
     </build>
 
     <profiles>
+        <profile>
+            <id>protobuf-windows-amd64</id>
+            <activation>
+                <os>
+                    <family>windows</family>
+                    <arch>amd64</arch>
+                </os>
+            </activation>
+            <properties>
+                <protobuf.os.classifier>windows-x86_64</protobuf.os.classifier>
+            </properties>
+        </profile>
+        <profile>
+            <id>protobuf-windows-x86_64</id>
+            <activation>
+                <os>
+                    <family>windows</family>
+                    <arch>x86_64</arch>
+                </os>
+            </activation>
+            <properties>
+                <protobuf.os.classifier>windows-x86_64</protobuf.os.classifier>
+            </properties>
+        </profile>
+        <profile>
+            <id>protobuf-linux-amd64</id>
+            <activation>
+                <os>
+                    <name>Linux</name>
+                    <arch>amd64</arch>
+                </os>
+            </activation>
+            <properties>
+                <protobuf.os.classifier>linux-x86_64</protobuf.os.classifier>
+            </properties>
+        </profile>
+        <profile>
+            <id>protobuf-linux-x86_64</id>
+            <activation>
+                <os>
+                    <name>Linux</name>
+                    <arch>x86_64</arch>
+                </os>
+            </activation>
+            <properties>
+                <protobuf.os.classifier>linux-x86_64</protobuf.os.classifier>
+            </properties>
+        </profile>
+        <profile>
+            <id>protobuf-linux-aarch64</id>
+            <activation>
+                <os>
+                    <name>Linux</name>
+                    <arch>aarch64</arch>
+                </os>
+            </activation>
+            <properties>
+                <protobuf.os.classifier>linux-aarch_64</protobuf.os.classifier>
+            </properties>
+        </profile>
+        <profile>
+            <id>protobuf-linux-arm64</id>
+            <activation>
+                <os>
+                    <name>Linux</name>
+                    <arch>arm64</arch>
+                </os>
+            </activation>
+            <properties>
+                <protobuf.os.classifier>linux-aarch_64</protobuf.os.classifier>
+            </properties>
+        </profile>
+        <profile>
+            <id>protobuf-macos-x86_64</id>
+            <activation>
+                <os>
+                    <family>mac</family>
+                    <arch>x86_64</arch>
+                </os>
+            </activation>
+            <properties>
+                <protobuf.os.classifier>osx-x86_64</protobuf.os.classifier>
+            </properties>
+        </profile>
+        <profile>
+            <id>protobuf-macos-aarch64</id>
+            <activation>
+                <os>
+                    <family>mac</family>
+                    <arch>aarch64</arch>
+                </os>
+            </activation>
+            <properties>
+                <protobuf.os.classifier>osx-aarch_64</protobuf.os.classifier>
+            </properties>
+        </profile>
+        <profile>
+            <id>protobuf-macos-arm64</id>
+            <activation>
+                <os>
+                    <family>mac</family>
+                    <arch>arm64</arch>
+                </os>
+            </activation>
+            <properties>
+                <protobuf.os.classifier>osx-aarch_64</protobuf.os.classifier>
+            </properties>
+        </profile>
         <profile>
             <id>release</id>
             <build>
